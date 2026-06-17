@@ -1,0 +1,100 @@
+# ========== Python ==========
+# 字节码缓存
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+
+# 虚拟环境
+venv/
+env/
+.venv/
+.env/
+ENV/
+env.bak/
+venv.bak/
+
+# 开发工具
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.mypy_cache/
+.ruff_cache/
+
+# ========== IDE ==========
+# VS Code
+.vscode/
+*.code-workspace
+
+# PyCharm
+.idea/
+*.iml
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# Vim
+*.swp
+*.swo
+*~
+
+# ========== 操作系统 ==========
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# ========== 项目特定 ==========
+# 日志文件
+logs/
+*.log
+
+# 上传的图片（临时文件）
+uploads/
+*.jpg
+*.jpeg
+*.png
+*.fits
+*.fit
+*.tiff
+
+# 数据库文件（SQLite 等）
+*.db
+*.sqlite
+*.sqlite3
+
+# 环境变量文件（包含敏感信息）
+.env
+.env.local
+.env.*.local
+
+# C 编译产物
+*.dylib
+*.so
+*.dll
+test_c
+lib/
+c_src/*.o
+*.o
+
+# Python 打包
+*.egg-info/
+dist/
+build/
+*.whl
+
+# 临时文件
+tmp/
+temp/
+*.tmp
+*.temp
+
+# ========== Docker ==========
+*.pid
+docker-compose.override.yml
