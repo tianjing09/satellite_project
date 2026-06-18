@@ -1,12 +1,17 @@
-# brew services start postgresql@18
-# brew services start redis
-# redis-cli ping
-from fastapi import FastAPI
+# http://localhost:8000/test-db
+# cd ~/Desktop/satellite_project/backend
+# uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+
+from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi import Depends
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
+import os
+
+from app.routers import images
 from app.database import get_db
+from app.config import settings
 
 app = FastAPI(
     title="卫星轨迹提取系统",
@@ -23,12 +28,21 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 健康检查接口
+# 注册路由
+app.include_router(images.router)
+
+# 挂载静态文件目录（让图片可以通过 URL 访问）
+upload_path = os.path.join(settings.UPLOAD_DIR, "images")
+if os.path.exists(upload_path):
+    app.mount("/uploads/images", StaticFiles(directory=upload_path), name="uploads")
+
+
+# ========== 健康检查接口 ==========
 @app.get("/health")
 async def health_check():
     return {"status": "healthy", "message": "卫星轨迹提取系统运行正常"}
 
-# 根路径
+
 @app.get("/")
 async def root():
     return {
@@ -37,9 +51,10 @@ async def root():
         "health": "/health"
     }
 
-# 新增：测试数据库连接接口
+
 @app.get("/test-db")
 async def test_db(db: AsyncSession = Depends(get_db)):
+    """测试数据库连接"""
     try:
         result = await db.execute(text("SELECT 1"))
         return {"status": "ok", "message": "数据库连接正常"}
