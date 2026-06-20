@@ -138,7 +138,8 @@ async def process_task(
     # process_task_celery.delay(task_id)
     
     # 目前用 BackgroundTasks 模拟（后面替换成 Celery）
-    background_tasks.add_task(simulate_process, task_id)
+    # background_tasks.add_task(simulate_process, task_id)
+    background_tasks.add_task(process_task_with_c, task_id)
     
     return TaskProcessResponse(
         task_id=task_id,
