@@ -1,3 +1,24 @@
+# cd ~/Desktop/satellite_project/backend
+
+# python << 'EOF'
+# import asyncio
+# from app.database import engine, Base
+# import app.models.task
+# import app.models.image
+
+# async def create_tables():
+#     async with engine.begin() as conn:
+#         await conn.run_sync(Base.metadata.create_all)
+#     print("✅ 表创建成功！")
+
+# asyncio.run(create_tables())
+# EOF
+
+# % which python3
+# /usr/local/bin/python3
+# (base) jingtian@jingdeMacBook-Pro backend % which python 
+# /opt/anaconda3/bin/python
+
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import declarative_base
 from app.config import settings

@@ -9,6 +9,7 @@ class Image(Base):
     __tablename__ = "images"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    task_id = Column(UUID(as_uuid=True), nullable=False, index=True)
     user_id = Column(Integer, nullable=False)
     telescope_id = Column(String(50), nullable=True)
     file_name = Column(String(255), nullable=False)
@@ -16,9 +17,14 @@ class Image(Base):
     file_url = Column(Text, nullable=False)
     file_size = Column(BigInteger, nullable=True)
     mime_type = Column(String(100), nullable=True)
+    type = Column(String(50), default="raw")
+    parent_id = Column(UUID(as_uuid=True), nullable=True)
+    status = Column(String(20), default="uploaded")
+    error_message = Column(Text, nullable=True)
     uploaded_at = Column(DateTime, server_default=func.now())
 
     __table_args__ = (
-        Index("idx_images_user_id", "user_id"),
-        Index("idx_images_uploaded_at", "uploaded_at"),
+        Index("idx_images_task_id", "task_id"),
+        Index("idx_images_type", "type"),
+        Index("idx_images_parent_id", "parent_id"),
     )

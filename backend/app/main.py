@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 import os
 
-from app.routers import images
+from app.routers import images, tasks
 from app.database import get_db
 from app.config import settings
 
@@ -30,11 +30,14 @@ app.add_middleware(
 
 # 注册路由
 app.include_router(images.router)
+app.include_router(tasks.router)
 
 # 挂载静态文件目录（让图片可以通过 URL 访问）
-upload_path = os.path.join(settings.UPLOAD_DIR, "images")
-if os.path.exists(upload_path):
-    app.mount("/uploads/images", StaticFiles(directory=upload_path), name="uploads")
+# upload_path = os.path.join(settings.UPLOAD_DIR, "images")
+# if os.path.exists(upload_path):
+#     app.mount("/uploads/images", StaticFiles(directory=upload_path), name="uploads")
+if os.path.exists(settings.UPLOAD_DIR):
+    app.mount("/uploads", StaticFiles(directory=settings.UPLOAD_DIR), name="uploads")
 
 
 # ========== 健康检查接口 ==========
