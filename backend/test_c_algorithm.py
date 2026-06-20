@@ -1,3 +1,4 @@
+#  jingtian@jingdeMacBook-Pro backend % python test_c_algorithm.py
 #!/usr/bin/env python
 import os
 import sys
