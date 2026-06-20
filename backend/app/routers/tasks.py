@@ -9,6 +9,8 @@ from app.database import get_db, AsyncSessionLocal
 from app.config import settings
 from app.models.task import Task
 from app.models.image import Image
+# 在文件开头添加导入
+from app.services.c_algorithm import CAlgorithm
 
 router = APIRouter(prefix="/tasks", tags=["任务管理"])
 
@@ -274,3 +276,75 @@ async def simulate_process(task_id: str):
             ]
         }
         await session.commit()
+
+
+# 在 simulate_process 中调用 C 算法
+async def process_task_with_c(task_id: str):
+    """使用 C 算法处理任务"""
+    from app.database import AsyncSessionLocal
+    from app.models.task import Task
+    from app.models.image import Image
+    from sqlalchemy import select
+    
+    async with AsyncSessionLocal() as session:
+        # 1. 获取任务
+        task = await session.get(Task, task_id)
+        if not task:
+            return
+        
+        try:
+            # 2. 获取所有 raw 图片
+            result = await session.execute(
+                select(Image).where(
+                    Image.task_id == task_id,
+                    Image.type == "raw"
+                )
+            )
+            images = result.scalars().all()
+            
+            if not images:
+                task.status = "failed"
+                task.error_message = "没有找到原始图片"
+                await session.commit()
+                return
+            
+            # 3. 准备路径
+            image_paths = [img.file_path for img in images]
+            output_dir = Path(task.task_dir) / "filtered"
+            
+            # 4. 创建进度回调
+            def on_progress(step, message, progress, error_code, error_msg, data, current, total):
+                # 更新任务进度
+                task.progress = progress
+                # 这里可以存储到数据库或通过 WebSocket 推送
+            
+            # 5. 调用 C 算法
+            c_algo = CAlgorithm()
+            result = c_algo.process_images(
+                image_paths=image_paths,
+                output_dir=str(output_dir),
+                progress_callback=on_progress
+            )
+            
+            # 6. 处理结果
+            if result.get("status") == "success":
+                # 更新任务
+                task.status = "completed"
+                task.progress = 100
+                task.success_count = result.get("processed", 0)
+                task.result = result
+                
+                # TODO: 为每张 filtered 图片插入记录
+                # 遍历 result["results"]，插入 filtered 类型的图片记录
+                
+            else:
+                task.status = "failed"
+                task.error_message = result.get("message", "处理失败")
+            
+            await session.commit()
+            
+        except Exception as e:
+            task.status = "failed"
+            task.error_message = str(e)
+            await session.commit()
+            raise
