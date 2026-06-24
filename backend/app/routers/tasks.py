@@ -65,14 +65,16 @@ async def create_task(
     - 创建任务目录
     - 返回 task_id
     """
-    task_id = str(uuid.uuid4())
+    # task_id = str(uuid.uuid4())
+    # 创建任务时使用字符串 UUID
+    task_id = str(uuid.uuid4())  # 已经是字符串
     task_dir = Path(settings.TASKS_DIR) / task_id
     
     # 创建任务目录
     task_dir.mkdir(parents=True, exist_ok=True)
     (task_dir / "raw").mkdir(exist_ok=True)
-    (task_dir / "filtered").mkdir(exist_ok=True)
-    (task_dir / "enhanced").mkdir(exist_ok=True)
+    # (task_dir / "filtered").mkdir(exist_ok=True)
+    # (task_dir / "enhanced").mkdir(exist_ok=True)
     
     # 创建任务记录
     async with AsyncSessionLocal() as session:

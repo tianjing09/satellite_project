@@ -1,14 +1,18 @@
+# app/worker/tasks.py
+
 import asyncio
 import json
+import uuid
 from pathlib import Path
+from typing import Dict, Any, Optional
 from celery import Task
-from sqlalchemy import select
 
 from app.worker.celery_app import celery_app
 from app.database import AsyncSessionLocal
 from app.models.task import Task as TaskModel
 from app.models.image import Image
 from app.services.c_algorithm import CAlgorithm
+from sqlalchemy import select, func
 
 
 class ProcessTask(Task):
@@ -27,10 +31,8 @@ def process_task(self, task_id: str):
     Celery 任务：处理卫星轨迹提取
     """
     try:
-        # 在 Celery 中运行异步代码
         loop = asyncio.get_event_loop()
         if loop.is_running():
-            # 如果事件循环正在运行，创建新任务
             import concurrent.futures
             with concurrent.futures.ThreadPoolExecutor() as executor:
                 future = executor.submit(
@@ -42,13 +44,13 @@ def process_task(self, task_id: str):
             return loop.run_until_complete(_process_task_async(task_id, self))
             
     except Exception as e:
-        # 更新任务状态为失败
         self.update_state(state="FAILURE", meta={"error": str(e)})
         raise
 
 
 async def _process_task_async(task_id: str, celery_task: Task):
     """异步执行任务的核心逻辑"""
+    # 用独立的事务来处理每一步
     async with AsyncSessionLocal() as session:
         # 1. 获取任务
         task = await session.get(TaskModel, task_id)
@@ -58,6 +60,8 @@ async def _process_task_async(task_id: str, celery_task: Task):
         try:
             # 2. 更新状态为处理中
             task.status = "processing"
+            task.step = 0
+            task.progress = 0
             await session.commit()
             
             # 3. 获取所有 raw 图片
@@ -77,18 +81,32 @@ async def _process_task_async(task_id: str, celery_task: Task):
             
             # 4. 准备路径
             image_paths = [img.file_path for img in images]
-            output_dir = Path(task.task_dir) / "filtered"
+            output_dir = Path(task.task_dir)
             output_dir.mkdir(parents=True, exist_ok=True)
             
-            # 5. 进度回调（更新数据库）
+            # 5. 创建图片路径到 ID 的映射
+            path_to_image = {img.file_path: img for img in images}
+            
+            # ============================================================
+            # 6. 进度回调 - 使用独立事务，避免与主事务冲突
+            # ============================================================
+            async def update_step_in_db(step: int, progress: int):
+                """在独立事务中更新 step 和 progress"""
+                async with AsyncSessionLocal() as db_session:
+                    db_task = await db_session.get(TaskModel, task_id)
+                    if db_task:
+                        db_task.step = step
+                        db_task.progress = progress
+                        await db_session.commit()
+            
             def on_progress(step, message, progress, error_code, error_msg, data, current, total):
-                # Celery 任务更新进度（前端轮询时能看到）
+                """C 算法进度回调 - 实时更新数据库"""
+                # 更新 Celery 任务状态
                 celery_task.update_state(
                     state="PROGRESS",
                     meta={
                         "step": step,
                         "message": message,
-                        "progress": progress,
                         "current": current,
                         "total": total,
                         "error_code": error_code,
@@ -96,82 +114,103 @@ async def _process_task_async(task_id: str, celery_task: Task):
                     }
                 )
                 
-                # 同步更新数据库（需要异步执行）
-                async def update_db():
-                    async with AsyncSessionLocal() as db_session:
-                        db_task = await db_session.get(TaskModel, task_id)
-                        if db_task:
-                            db_task.progress = progress
-                            await db_session.commit()
-                
+                # 使用独立事务更新数据库
                 try:
-                    # 在 Celery 中运行异步更新
                     loop = asyncio.get_event_loop()
                     if loop.is_running():
-                        loop.create_task(update_db())
+                        loop.create_task(update_step_in_db(step, step * 20))
                     else:
-                        loop.run_until_complete(update_db())
-                except:
-                    pass
+                        loop.run_until_complete(update_step_in_db(step, step * 20))
+                except Exception as e:
+                    print(f"更新进度失败: {e}")
             
-            # 6. 调用 C 算法
+            # 7. 调用 C 算法
             c_algo = CAlgorithm()
-            result = c_algo.process_images(
+            c_result = c_algo.process_images(
                 image_paths=image_paths,
                 output_dir=str(output_dir),
                 progress_callback=on_progress
             )
             
-            # 7. 处理结果
-            if result.get("status") == "success":
+            # 8. 处理结果
+            if c_result and c_result.get("status") == "success":
                 task.status = "completed"
                 task.progress = 100
-                task.success_count = result.get("success_count", 0)
-                task.result = result.get("tracks")
+                task.step = 5
+                task.success_count = c_result.get("success_count", 0)
+                task.total_images = c_result.get("total", len(images))
+                task.result = c_result.get("tracks")
                 
-                # 为每张成功处理的图片插入 filtered 记录
-                for item in result.get("results", []):
-                    if item.get("status") == "ok" and item.get("output"):
-                        original = await session.execute(
-                            select(Image).where(
-                                Image.task_id == task_id,
-                                Image.file_path == item["original"],
-                                Image.type == "raw"
-                            )
-                        )
-                        original_img = original.scalar_one_or_none()
+                # 为每张成功处理的图片插入 filtered 和 enhanced 记录
+                for item in c_result.get("results", []):
+                    original_path = item.get("original")
+                    original_img = path_to_image.get(original_path)
+                    
+                    if not original_img:
+                        continue
+                    
+                    if item.get("status") == "ok":
+                        original_img.status = "completed"
                         
-                        if original_img:
-                            import uuid
+                        filtered_path = item.get("filtered")
+                        if filtered_path:
+                            filtered_filename = Path(filtered_path).name
                             filtered_img = Image(
                                 id=str(uuid.uuid4()),
                                 task_id=task_id,
                                 user_id=task.user_id,
-                                file_name=f"{original_img.file_name}_filtered.jpg",
-                                file_path=item["output"],
-                                file_url=f"/uploads/tasks/{task_id}/filtered/{Path(item['output']).name}",
+                                file_name=filtered_filename,
+                                file_path=filtered_path,
+                                file_url=f"/uploads/tasks/{task_id}/filtered/{filtered_filename}",
                                 type="filtered",
-                                parent_id=original_img.id,
+                                parent_id=str(original_img.id),
                                 status="completed"
                             )
                             session.add(filtered_img)
+                        
+                        enhanced_path = item.get("enhanced")
+                        if enhanced_path:
+                            enhanced_filename = Path(enhanced_path).name
+                            enhanced_img = Image(
+                                id=str(uuid.uuid4()),
+                                task_id=task_id,
+                                user_id=task.user_id,
+                                file_name=enhanced_filename,
+                                file_path=enhanced_path,
+                                file_url=f"/uploads/tasks/{task_id}/enhanced/{enhanced_filename}",
+                                type="enhanced",
+                                parent_id=original_img.id,
+                                status="completed"
+                            )
+                            session.add(enhanced_img)
+                    else:
+                        original_img.status = "failed"
+                        original_img.error_message = item.get("error", "处理失败")
                 
                 await session.commit()
                 
                 return {
                     "status": "completed",
                     "success_count": task.success_count,
+                    "total_images": task.total_images,
                     "tracks": task.result
                 }
                 
             else:
                 task.status = "failed"
-                task.error_message = result.get("message", "处理失败")
+                task.error_message = c_result.get("message", "处理失败") if c_result else "C 算法返回空结果"
                 await session.commit()
                 return {"status": "failed", "error": task.error_message}
                 
         except Exception as e:
-            task.status = "failed"
-            task.error_message = str(e)
-            await session.commit()
+            await session.rollback()
+            
+            # 用新事务更新任务状态为失败
+            async with AsyncSessionLocal() as db_session:
+                db_task = await db_session.get(TaskModel, task_id)
+                if db_task:
+                    db_task.status = "failed"
+                    db_task.error_message = str(e)
+                    await db_session.commit()
+            
             raise
