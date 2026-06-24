@@ -143,6 +143,7 @@ async def process_task(
     )
 
 
+# app/routers/tasks.py
 @router.get("/{task_id}")
 async def get_task(task_id: str):
     """查询任务详情"""
@@ -156,17 +157,41 @@ async def get_task(task_id: str):
         if not task:
             raise HTTPException(404, "任务不存在")
         
-        # 查询该任务下的所有图片
+        # 查询该任务下的所有图片（包括 raw, filtered, enhanced）
         result = await session.execute(
             select(Image).where(Image.task_id == task_id).order_by(Image.uploaded_at)
         )
         images = result.scalars().all()
     
+    # 按类型分组
+    raw_images = []
+    filtered_images = []
+    enhanced_images = []
+    
+    for img in images:
+        img_data = {
+            "id": str(img.id),
+            "file_name": img.file_name,
+            "file_url": img.file_url,
+            "type": img.type,
+            "status": img.status,
+            "parent_id": str(img.parent_id) if img.parent_id else None,
+            "error_message": img.error_message,
+        }
+        if img.type == "raw":
+            raw_images.append(img_data)
+        elif img.type == "filtered":
+            filtered_images.append(img_data)
+        elif img.type == "enhanced":
+            enhanced_images.append(img_data)
+    
+    # 构建返回数据
     return {
         "task": {
             "id": str(task.id),
             "name": task.name,
             "status": task.status,
+            "step": task.step if hasattr(task, 'step') else 0,  # ← 添加 step
             "progress": task.progress,
             "total_images": task.total_images,
             "success_count": task.success_count,
@@ -175,20 +200,12 @@ async def get_task(task_id: str):
             "created_at": task.created_at,
             "updated_at": task.updated_at,
         },
-        "images": [
-            {
-                "id": str(img.id),
-                "file_name": img.file_name,
-                "file_url": img.file_url,
-                "type": img.type,
-                "status": img.status,
-                "parent_id": str(img.parent_id) if img.parent_id else None,
-                "error_message": img.error_message,
-            }
-            for img in images
-        ]
+        "images": {
+            "raw": raw_images,
+            "filtered": filtered_images,
+            "enhanced": enhanced_images,
+        }
     }
-
 
 @router.get("/")
 async def list_tasks(
