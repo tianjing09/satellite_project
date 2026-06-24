@@ -9,8 +9,10 @@ from app.database import get_db, AsyncSessionLocal
 from app.config import settings
 from app.models.task import Task
 from app.models.image import Image
+
 # 在文件开头添加导入
 from app.services.c_algorithm import CAlgorithm
+from app.worker.tasks import process_task as process_task_celery
 
 router = APIRouter(prefix="/tasks", tags=["任务管理"])
 
@@ -94,24 +96,16 @@ async def create_task(
         message="任务创建成功，请上传图片"
     )
 
-
+# 修改 process_task 路由
 @router.post("/{task_id}/process", response_model=TaskProcessResponse)
 async def process_task(
     task_id: str,
     background_tasks: BackgroundTasks,
 ):
     """
-    开始处理任务
-    - 验证任务状态
-    - 检查是否有图片
-    - 丢给后台处理
+    开始处理任务（通过 Celery 异步执行）
     """
     async with AsyncSessionLocal() as session:
-        from sqlalchemy import select, func
-        from app.models.task import Task
-        from app.models.image import Image
-        
-        # 查询任务
         task = await session.get(Task, task_id)
         if not task:
             raise HTTPException(404, "任务不存在")
@@ -120,6 +114,7 @@ async def process_task(
             raise HTTPException(400, f"任务状态为 {task.status}，无法处理")
         
         # 统计图片数量
+        from sqlalchemy import func, select
         result = await session.execute(
             select(func.count(Image.id)).where(Image.task_id == task_id)
         )
@@ -134,17 +129,15 @@ async def process_task(
         task.updated_at = func.now()
         await session.commit()
     
-    # TODO: 丢给 Celery 处理（后面实现）
-    # process_task_celery.delay(task_id)
-    
-    # 目前用 BackgroundTasks 模拟（后面替换成 Celery）
-    # background_tasks.add_task(simulate_process, task_id)
-    background_tasks.add_task(process_task_with_c, task_id)
+    # ========== 关键：提交 Celery 任务 ==========
+    # 替换原来的 background_tasks.add_task(simulate_process, task_id)
+    # background_tasks.add_task(process_task_with_c, task_id)
+    process_task_celery.delay(task_id)
     
     return TaskProcessResponse(
         task_id=task_id,
         status="processing",
-        message="任务已开始处理"
+        message="任务已提交到队列，请稍后查询结果"
     )
 
 

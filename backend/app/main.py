@@ -1,6 +1,17 @@
 # http://localhost:8000/test-db
+
+# brew services start redis
+
+# # 启动 Celery Worker
+# cd ~/Desktop/satellite_project/backend
+# celery -A app.worker.celery_app worker --loglevel=info
+
 # cd ~/Desktop/satellite_project/backend
 # uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+
+
+# http://localhost:8000/redoc
+# http://localhost:8000/docs
 
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
