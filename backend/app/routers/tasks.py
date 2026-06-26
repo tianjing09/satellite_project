@@ -162,6 +162,10 @@ async def get_task(task_id: str):
             select(Image).where(Image.task_id == task_id).order_by(Image.uploaded_at)
         )
         images = result.scalars().all()
+
+        print(f"📊 任务 {task_id} 共有 {len(images)} 张图片")
+        for img in images:
+            print(f"   - {img.type}: {img.file_name}")
     
     # 按类型分组
     raw_images = []
