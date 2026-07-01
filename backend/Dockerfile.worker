@@ -8,8 +8,7 @@ RUN apt-get update && apt-get install -y \
     g++ \
     make \
     libc-dev \
-    libpthread-stubs0-dev \
-    libm-dev \   
+    libpthread-stubs0-dev \  
     && rm -rf /var/lib/apt/lists/*
 
 # 安装 Python 依赖
