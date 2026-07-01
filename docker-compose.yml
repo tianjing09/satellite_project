@@ -1,0 +1,99 @@
+version: '1.0'
+
+services:
+  # PostgreSQL 数据库
+  postgres:
+    image: postgres:16-alpine
+    container_name: satellite-postgres
+    environment:
+      POSTGRES_USER: satellite_user
+      POSTGRES_PASSWORD: satellite_pass
+      POSTGRES_DB: satellite_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - satellite-network
+    restart: unless-stopped
+
+  # Redis 消息代理
+  redis:
+    image: redis:7-alpine
+    container_name: satellite-redis
+    ports:
+      - "6379:6379"
+    networks:
+      - satellite-network
+    restart: unless-stopped
+
+  # 后端 API
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: satellite-backend
+    environment:
+      DATABASE_URL: postgresql://satellite_user:satellite_pass@postgres:5432/satellite_db
+      REDIS_URL: redis://redis:6379/0
+      UPLOAD_DIR: /app/uploads
+      # 如果有其他环境变量，在这里添加
+    ports:
+      - "8000:8000"
+    volumes:
+      # ⚠️ 重要：这里需要根据你的实际情况修改路径 need change
+      - /Users/jingtian/Documents/satellite_uploads:/app/uploads
+      # 开发时启用热重载（可选）
+      # - ./backend/app:/app/app
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - satellite-network
+    restart: unless-stopped
+
+  # Celery Worker
+  celery-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.worker
+    container_name: satellite-worker
+    environment:
+      DATABASE_URL: postgresql://satellite_user:satellite_pass@postgres:5432/satellite_db
+      REDIS_URL: redis://redis:6379/0
+      UPLOAD_DIR: /app/uploads
+    # ⚠️ 重要：这里需要根据你的实际情况修改路径 need change
+    volumes:
+      - /Users/jingtian/Documents/satellite_uploads:/app/uploads
+      # 开发时启用热重载（可选）
+      # - ./backend/app:/app/app
+    depends_on:
+      - postgres
+      - redis
+      - backend
+    networks:
+      - satellite-network
+    restart: unless-stopped
+
+  # 前端（Nginx）
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: satellite-frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    networks:
+      - satellite-network
+    restart: unless-stopped
+
+# 网络
+networks:
+  satellite-network:
+    driver: bridge
+
+# 卷
+volumes:
+  postgres_data:
