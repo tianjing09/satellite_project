@@ -17,7 +17,7 @@ export const taskApi = {
    * 获取任务列表
    */
   list: async (params?: TaskListParams): Promise<TaskListResponse> => {
-    const response = await apiClient.get<TaskListResponse>('/tasks', { params })
+    const response = await apiClient.get<TaskListResponse>('/tasks/', { params })
     return response.data
   },
 
@@ -33,7 +33,7 @@ export const taskApi = {
    * 创建任务
    */
   create: async (data: CreateTaskRequest): Promise<CreateTaskResponse> => {
-    const response = await apiClient.post<CreateTaskResponse>('/tasks', data)
+    const response = await apiClient.post<CreateTaskResponse>('/tasks/', data)
     return response.data
   },
 
