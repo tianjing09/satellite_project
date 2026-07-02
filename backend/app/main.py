@@ -13,6 +13,19 @@
 # http://localhost:8000/redoc
 # http://localhost:8000/docs
 
+# docker-compose down
+# docker-compose down -v  # 会删除数据卷
+
+# docker-compose build --no-cache
+# docker-compose up -d
+
+# docker-compose build --no-cache backend
+# docker-compose up -d backend
+
+# docker images | grep satellite
+
+# docker-compose logs -f
+
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
